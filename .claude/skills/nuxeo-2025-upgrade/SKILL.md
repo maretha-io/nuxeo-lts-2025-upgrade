@@ -1,0 +1,115 @@
+---
+name: nuxeo-2025-upgrade
+description: Upgrade a Nuxeo plugin/marketplace project from LTS 2023 to LTS 2025. Use when the user wants to migrate a Nuxeo project to 2025, bump nuxeo-parent from 2023.x to 2025.x, move javax→jakarta, or fix a Nuxeo build broken by the 2025 upgrade. Asks for the project path, then applies version bumps, code migrations, test-infra fixes, and builds with JDK 21.
+---
+
+# Nuxeo LTS 2023 → 2025 upgrade
+
+You are upgrading a Nuxeo Maven project from LTS 2023 to LTS 2025. Work **in the user's
+target project**, not in this skill's repo. Be autonomous: apply the known migrations, build,
+read the compiler/test errors, and fix them. The companion file
+[`reference/migrations.md`](reference/migrations.md) is your encyclopedia of exact before→after
+changes — read it before editing code.
+
+## Phase 0 — Preflight
+
+1. Ask the user for the **absolute path to their Nuxeo project** (the directory with the root
+   `pom.xml`). Confirm it's a Maven project currently on Nuxeo **2023** (root pom parent
+   `org.nuxeo:nuxeo-parent:2023.x`). If it's already 2025 or not Nuxeo, stop and say so.
+2. Verify **JDK 21** is available: `/usr/libexec/java_home -v21` (macOS) or check `java -version`.
+   All Maven commands in this skill must run with `JAVA_HOME` pointed at JDK 21, e.g.
+   `JAVA_HOME=$(/usr/libexec/java_home -v21) mvn ...`. Nuxeo 2025 enforces Java `[21,)`.
+3. Decide the **target version** with the user (see "Versions" in migrations.md): the build
+   parent is 2-part (e.g. `2025.16`) but the platform artifacts are **3-part** (e.g.
+   `2025.16.13`). Get both, or ask which `2025.x` to target. If unsure, use the latest stable
+   `nuxeo-parent` and read its `<parent>` version to find the matching platform version.
+4. Create/switch to a working branch (e.g. `upgrade-2025`) if the user hasn't. Never commit or
+   push unless asked.
+
+## Phase 1 — Assess
+
+Read every `pom.xml` (root + modules) and the marketplace `package.xml`. Record: parent version,
+the `nuxeo.platform.version`/`nuxeo.distribution.version`/`nuxeo.target.version` properties,
+`maven.compiler.release`, module list, the Studio artifact + version, the marketplace
+`<platform>` line, and CI JDK/Maven versions. Note explicitly-pinned dependency versions (these
+are the dangerous ones — see commons-io below).
+
+Then grep the source tree for the migration triggers (the lists in migrations.md): `javax.`
+imports, `org.joda.time`, `lombok`, `org.mockito.Matchers`, `nuxeo-elasticsearch-core`,
+`RepositoryLightElasticSearchFeature`, `getForm()`/`FormData`, `mock-javamail`, removed
+`HttpSession` methods, etc. Build a concrete work-list scoped to what this project actually uses.
+
+## Phase 2 — Versions & POMs
+
+Apply, per migrations.md "Versions & build":
+- Root pom: `nuxeo-parent` → target 2-part version; `nuxeo.platform.version` /
+  `nuxeo.distribution.version` / `nuxeo.target.version` → the **3-part** platform version;
+  `maven.compiler.release` 17 → 21; bump per-module `<source>/<target>/<release>` 17 → 21.
+- Marketplace `package.xml`: `<platform>lts-2023.*` → `lts-2025.*`.
+- CI (`.github/workflows`, Jenkinsfile): JDK 17 → 21, Maven → 3.9.x.
+- Studio dependency: set the project's Studio GAV to a 2025-built version (ask the user; Maven
+  versions can't contain `/`, so a branch like `feature/2025` must be the sanitized GAV from
+  Studio → Branch Management → "Maven GAV", often `2025-SNAPSHOT`).
+- **Remove obsolete explicit version pins** that are older than 2025 needs — especially
+  `commons-io` (must be ≥ 2.17; let the BOM provide 2.21.0).
+
+## Phase 3 — Source code migrations
+
+Work through migrations.md "Source code". The big ones: `javax.{inject,ws.rs,servlet,mail}` →
+`jakarta.*` (and `javax.servlet-api` → `jakarta.servlet-api`); Joda-Time → `java.time`;
+remove Lombok usages (old Lombok breaks on JDK 21); drop jetbrains `@NotNull`; Elasticsearch
+core dep → `nuxeo-core-search`; WebEngine `FormData`/`getForm()` → `MultivaluedMap`/`getRequest()`;
+`TaskObject` package move; `commons-lang` → `lang3`; PDFBox 2 → 3; Mockito `Matchers` →
+`ArgumentMatchers`. Prefer mechanical, project-wide `perl -0pi` substitutions for the namespace
+moves, then let the compiler catch the rest.
+
+## Phase 4 — Test-infrastructure migrations
+
+Tests fail differently from main code. Apply migrations.md "Tests": `RepositoryLightElasticSearchFeature`
+→ `CoreSearchFeature`; `mock-javamail` → `SmtpMailServerFeature` (point `mail.transport.port` at
+`nuxeo.test.mail.smtp.port`, disable auth/tls, read via `MailsResult`); `TransientStoreFeature`
+package move; add `CollectionFeature`/`SQLDirectoryFeature` deps where transitive ones vanished;
+remove Servlet-6 `HttpSession` method overrides; `comment-core` → `comment`; bulk actions whose
+`defaultScroller="elastic"` need a test-only `elastic`→repository scroll alias (don't change the
+production contributions — production runs on Elasticsearch).
+
+## Phase 5 — Build & fix loop
+
+Build incrementally with JDK 21, reading errors and fixing against migrations.md:
+```
+JAVA_HOME=$(/usr/libexec/java_home -v21) mvn -nsu clean test-compile -B -fae
+```
+- `-fae` (fail at end) surfaces all module errors per run; `-nsu` avoids slow snapshot re-resolution.
+- Distinguish **code errors** (fix per migrations.md) from **resolution errors** (need the private
+  2025 repo / VPN — tell the user, don't fight them).
+- When `test-compile` is green, run the suite: `mvn -nsu test -pl <module>` (Nuxeo tests run on
+  H2/in-mem by default — no MongoDB needed for most). Fix failures; many are the test-infra items
+  in Phase 4. Re-read migrations.md "Tests" for the subtle ones (DublinCore contributor overwrite,
+  multi-recipient SMTP parsing, directory schemas).
+- If a test relies on infra that's genuinely hard to reconstruct in 2025 (large REST-client
+  tests on the removed Jersey 1.x stack), it's acceptable to **quarantine** it via
+  `maven-compiler-plugin` `<testExcludes>` with a `TODO(2025-upgrade)` comment and tell the user —
+  rather than block the whole upgrade. Track it explicitly.
+
+## Phase 6 — Report
+
+Summarize: versions changed, code migrations applied, test fixes, build/test status, anything
+quarantined, and anything needing the user (Studio GAV, private-repo access, an unresolved test).
+Be honest about what was verified (compiled? tests run?) vs. assumed.
+
+## Known sharp edges
+
+- **Version mismatch 404s**: setting the platform property to the 2-part parent version (e.g.
+  `2025.16`) makes every nuxeo artifact 404 — it must be the 3-part platform version (`2025.16.13`).
+- **commons-io downgrade**: an explicit `<version>2.14.0</version>` (or any < 2.17) breaks
+  Nuxeo's `SQLDirectory` at runtime with `NoSuchFieldError/NoClassDefFoundError` on
+  `UnsynchronizedBufferedReader`. Remove the pin.
+- **Lombok on JDK 21**: a stale Lombok throws `NoSuchFieldError: JCImport.qualid` during compile
+  even if only one annotation is used. Remove the usage (or bump Lombok ≥ 1.18.30).
+- **Studio `/` in version**: a Studio branch name with a slash is not a valid Maven version; use
+  the GAV from Studio's "Maven GAV" button, or install the jar locally with `mvn install:install-file`.
+- **Test SQL vocabularies/directories**: directory templates and test datasources moved into
+  `*-tests` jars in 2025 (e.g. `template-directory` is now in `nuxeo-platform-directory-sql` test-jar
+  via `SQLDirectoryFeature`; the `vocabulary` schema is in `org.nuxeo.ecm.directory.types.contrib`).
+  Studio-vocabulary test directories can be stubborn — if a feature-flag/vocabulary directory won't
+  register, treat it as a known sharp edge and surface it to the user.
