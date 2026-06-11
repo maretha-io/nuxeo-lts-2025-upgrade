@@ -105,6 +105,10 @@ Summarize: versions changed, code migrations applied, test fixes, build/test sta
 quarantined, and anything needing the user (Studio GAV, private-repo access, an unresolved test).
 Be honest about what was verified (compiled? tests run?) vs. assumed.
 
+Remind the user about **deployment** search packages: if the target runs on OpenSearch, they must add
+`nuxeo-search-client-opensearch1` and `nuxeo-audit-opensearch1` to the distribution/marketplace
+packages or search and audit come up unconfigured (see migrations.md "Elasticsearch core removed").
+
 ## Phase UI — Studio Web UI project (Polymer)
 
 For a Studio Web UI project, read [`reference/web-ui.md`](reference/web-ui.md) first. The headline:

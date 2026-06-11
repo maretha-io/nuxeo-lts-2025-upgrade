@@ -115,6 +115,16 @@ In poms (compile **and** `test-jar`):
   → <groupId>org.nuxeo.ecm.core</groupId><artifactId>nuxeo-core-search</artifactId>
 ```
 
+**Deployment — search packages (IF on OpenSearch).** The 2025 search backend is modular: the
+distribution no longer bundles a search client by default. **If** your deployment uses **OpenSearch**
+(the typical case), you must explicitly deploy the OpenSearch client packages — otherwise search and
+audit silently come up unconfigured. Check the current Nuxeo docs for the exact set, but at minimum:
+- **`nuxeo-search-client-opensearch1`** — the repository search backend
+- **`nuxeo-audit-opensearch1`** — the audit backend
+Add them to the marketplace package `<require>`s / the distribution's installed packages (not a Maven
+compile dependency). (If you run a different search engine — e.g. MongoDB Atlas Search — deploy the
+corresponding client instead.)
+
 ### WebEngine FormData / getForm() removed
 `WebContext.getForm()` and `org.nuxeo.ecm.webengine.forms.FormData` are gone. A `@POST` handler
 that read form values now receives a `MultivaluedMap`, and overrides return `Template`:
