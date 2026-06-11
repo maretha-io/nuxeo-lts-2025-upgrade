@@ -41,9 +41,18 @@ It will ask for the absolute path to your Nuxeo project and then perform the upg
 5. Builds with JDK 21 and iterates on errors until it compiles and tests pass.
 6. Reports what changed and flags anything needing your input (e.g. Studio version).
 
-## Scope & limitations
+## Scope
 
-- Targets **server-side Java / Maven** plugin and marketplace-package projects. It does **not**
-  migrate Studio projects or Web UI (Polymer) — those are rebuilt/released separately in Studio.
+- **Server-side Java / Maven** plugin and marketplace-package projects — versions, Jakarta EE,
+  dropped/removed/relocated APIs, test-infra, build-and-fix on JDK 21.
+- **Studio Web UI** (Polymer) projects — the skill **verifies** 2025 readiness rather than
+  rewriting: the Web UI 2023→2025 upgrade is transparent, and the legacy Polymer elements are meant
+  to stay as-is. It updates `application.xml`, migrates functional tests if present, and flags real
+  breakages. See [`reference/web-ui.md`](.claude/skills/nuxeo-2025-upgrade/reference/web-ui.md).
+
+## Limitations
+
+- It does **not** rewrite legacy Polymer/`<dom-module>` elements (by design — Nuxeo says keep them),
+  and it does not migrate the Studio *model* itself (doctypes/workflows) — that's done in Studio.
 - The exact `2025.x` patch version and your Studio GAV are environment-specific; the skill asks.
 - See the "Known sharp edges" section of the skill for cases that may need manual attention.

@@ -1,6 +1,6 @@
 ---
 name: nuxeo-2025-upgrade
-description: Upgrade a Nuxeo plugin/marketplace project from LTS 2023 to LTS 2025. Use when the user wants to migrate a Nuxeo project to 2025, bump nuxeo-parent from 2023.x to 2025.x, move javax→jakarta, or fix a Nuxeo build broken by the 2025 upgrade. Asks for the project path, then applies version bumps, code migrations, test-infra fixes, and builds with JDK 21.
+description: Upgrade a Nuxeo project from LTS 2023 to LTS 2025 — Maven plugin/marketplace code and/or the Studio Web UI project. Use when the user wants to migrate a Nuxeo project to 2025, bump nuxeo-parent from 2023.x to 2025.x, move javax→jakarta, fix a Nuxeo build broken by the 2025 upgrade, or check whether a Studio/Web UI (Polymer) project needs changes for 2025. Asks for the project path, then applies version bumps, code migrations, test-infra fixes, and builds with JDK 21; for Web UI it verifies (rather than rewrites) the legacy elements.
 ---
 
 # Nuxeo LTS 2023 → 2025 upgrade
@@ -10,6 +10,14 @@ target project**, not in this skill's repo. Be autonomous: apply the known migra
 read the compiler/test errors, and fix them. The companion file
 [`reference/migrations.md`](reference/migrations.md) is your encyclopedia of exact before→after
 changes — read it before editing code.
+
+There are two kinds of project; ask which (or detect from the path):
+- A **Maven plugin / marketplace** project (has a root `pom.xml`) → Phases 0–6 below.
+- A **Studio Web UI** project (has `application.xml` + `studio/resources/nuxeo.war/ui/` Polymer
+  `.html` elements) → **Phase UI** below, driven by
+  [`reference/web-ui.md`](reference/web-ui.md). The Web UI upgrade is mostly transparent; that phase
+  is verification, not a rewrite. A project may be both (a platform repo + a separate Studio repo) —
+  handle each on its own path.
 
 ## Phase 0 — Preflight
 
@@ -96,6 +104,29 @@ JAVA_HOME=$(/usr/libexec/java_home -v21) mvn -nsu clean test-compile -B -fae
 Summarize: versions changed, code migrations applied, test fixes, build/test status, anything
 quarantined, and anything needing the user (Studio GAV, private-repo access, an unresolved test).
 Be honest about what was verified (compiled? tests run?) vs. assumed.
+
+## Phase UI — Studio Web UI project (Polymer)
+
+For a Studio Web UI project, read [`reference/web-ui.md`](reference/web-ui.md) first. The headline:
+**the Web UI 2023→2025 upgrade is transparent — do NOT rewrite the legacy `Polymer({})` /
+`<dom-module>` `.html` elements, behaviors, or layouts.** This phase is mostly verification.
+
+1. **`application.xml`**: ensure `<targetPlatform><version>lts-2025.0</version>` and align the
+   `<dependencies>` addon versions (`nuxeo-web-ui`, `nuxeo-wopi`, …) to current `2025.x`. Often the
+   user already did this when creating the Studio branch.
+2. **Functional tests** (only if present — `find` for `*.js` step-definitions/page-objects under an
+   `ftest`/test dir): Node 18→22 means `require()` → `import` with explicit `.js` extensions. Most
+   Studio projects have none → skip.
+3. **Verify, don't edit**: run the two checks in web-ui.md — (a) the `LTS2023...lts-2025` web-ui
+   compare for removed/renamed elements/behaviors/layouts (the real 2025 delta removed none — it's
+   RTL + a11y + i18n + tooling), and (b) the project's own behavior/style/element/import surface
+   against what 2025 still ships (all core behaviors and `iron-*`/`nuxeo-styles` remain).
+4. **Surface, don't silently fix**: flag pre-existing non-2025 issues (dead CDNs like Font Awesome
+   from `maxcdn.bootstrapcdn.com`, dependency drift) and recommend a **2025 sandbox smoke-test** —
+   fix specific console errors if they appear, rather than refactoring elements preventively.
+
+Do **not** convert Polymer elements to Lit/class-based, remove `<dom-module>`, or strip `@apply` —
+nuxeo-web-ui 2025 is still Polymer 3 and its maintainers mark those patterns as intentional.
 
 ## Known sharp edges
 

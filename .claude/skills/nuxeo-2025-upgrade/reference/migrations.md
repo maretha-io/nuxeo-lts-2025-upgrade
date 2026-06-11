@@ -271,7 +271,7 @@ test compilation and track them, rather than block the upgrade:
 <plugin><artifactId>maven-compiler-plugin</artifactId>
   <configuration>
     <!-- TODO(2025-upgrade): migrate to RestServerFeature + new HTTP test client -->
-    <testExcludes><testExclude>**/WorkflowEndpointTest.java</testExclude></testExcludes>
+    <testExcludes><testExclude>**/SomeLegacyRestClientTest.java</testExclude></testExcludes>
   </configuration>
 </plugin>
 ```
